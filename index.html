@@ -1,0 +1,89 @@
+NYC_MSA<-get_acs(geography = "tract",  #Defining the spatial scale
+                variables = Variables, #grabbing the variables we defined previously
+                survey = "acs5",      # survey we are pulling is the ACS 5 year estimates
+                year = 2020,   # End year for the 5 year estimates- 2016-2020
+                output = "wide", # data format wide (cross sectional)
+                state="NY", # Define which State you want to pull data from
+                county= c("New York", "Kings", "Queens", "Bronx", "Richmond"), # Defining the counties in the state that the data will come from
+                geometry=T) # Pulls the spatial data information with it.
+
+
+# First 10 records/observations return
+head(NYC_MSA)
+
+# summary() provides an overview of the data
+summary(NYC_MSA)
+
+# Lets clean up this data a little bit before we go too far
+# Here we are just pulling out the columns we care about using the indexing dataframe[,c("column name","etc")]
+NewYorkCity <-NYC_MSA[,c("GEOID", "NAME", "MHIE", "MHVE", "TotalpopE", "geometry")]
+# Easy renaming of the variables
+names(NewYorkCity)[names(NewYorkCity) =="MHIE"]<-"MHI"
+names(NewYorkCity)[names(NewYorkCity) =="MHVE"]<-"MHV"
+names(NewYorkCity)[names(NewYorkCity) =="TotalpopE"]<-"Totalpop"
+
+
+### Setting up the color palletes
+NYC_MHI<-colorQuantile(palette = "cividis", domain=NewYorkCity$MHI, n=10)
+NYC_MHV<-colorQuantile(palette = "RdYlGn", domain=NewYorkCity$MHV, n=10)
+NYC_pop<-colorQuantile(palette = "RdBu", domain=NewYorkCity$Totalpop, n=10)
+
+
+### The Leaflet map
+## Named map
+## this will take awhile
+NYCmap<-NewYorkCity %>% # Data set you want to map and the '%>%' is a piping command which makes it keep moving forward 
+  st_transform(crs = "+init=epsg:4326") %>% # Setting the projection of our simple feature spatial dataframe to match the webmapping application
+  leaflet() %>%  # Leaflet function which puts this all in motion
+  setView(lng = -74.01, lat = 40.72, zoom = 11)%>% # the lng and lat set the center point, while zoom chooses how zoomed in it is
+  addTiles(group = "OSM (default)") %>%  #This sets the base map and the following addProviderTiles() are optional otehr basemaps
+  #addProviderTiles(providers$Stamen.TonerLite, group = "Toner Lite") %>%
+  addProviderTiles(providers$CartoDB.Positron, group = "Carto B") %>%
+  addPolygons(group = "Total", #Add polygons is how we choose what we want to map.
+              popup = paste("Census Tract: ", NewYorkCity$NAME, "<br>", #Pop up provides the pop up information if we were to click on the county, paste() pastes all the text together
+                            "Total Population: ", NewYorkCity$Totalpop, "<br>", # <br> is html code for new line.   
+                            "Median Household Income: ", "$", NewYorkCity$MHI, "<br>",
+                            "Median Home Value: ", "$", NewYorkCity$MHV, "<br>"),
+              stroke = FALSE,
+              smoothFactor = 0,
+              fillOpacity = 0.7,
+              color = ~ Dpalpop(Totalpop)) %>% #Color palette or what the color scheme is.  You made these earlier and they need to match
+  addLegend(position = "bottomleft", pal=Dpalpop, values= NewYorkCity$Totalpop, #Legend for this polygon layer
+            title="Percentile of Census Tract Total Population", group = "Total", opacity = 1) %>% 
+  addPolygons(group = "MHI", #Next layer with the same set up as before.  We could add as many as the computer would let us. 
+              popup = paste("Census Tract: ", NewYorkCity$NAME, "<br>",
+                            "Total Population: ", NewYorkCity$Totalpop, "<br>",
+                            "Median Household Income: ", "$", NewYorkCity$MHI, "<br>",
+                            "Median Home Value: ", "$", NewYorkCity$MHV, "<br>"),
+              stroke = FALSE,
+              smoothFactor = 0,
+              fillOpacity = 0.7,
+              color = ~ DpalMHI(MHI)) %>%
+  addLegend(position = "bottomright", pal=DpalMHI, values= NewYorkCity$MHI, 
+            title="Percentile of Census Tract Median Household Income", group = "MHI", opacity = 1) %>% 
+  addPolygons(group = "MHV",
+              popup = paste("Census Tract: ", NewYorkCity$NAME, "<br>",
+                            "Total Population: ", NewYorkCity$Totalpop, "<br>",
+                            "Median Household Income: ", "$", NewYorkCity$MHI, "<br>",
+                            "Median Home Value: ", "$", NewYorkCity$MHV, "<br>"),
+              stroke = FALSE,
+              smoothFactor = 0,
+              fillOpacity = 0.7,
+              color = ~ DpalMHV(MHV)) %>%
+  addLegend(position = "bottomleft", pal=DpalMHV, values= NewYorkCity$MHV, 
+            title="Percentile of Census Tract Median Household Income", group = "MHV", opacity = 1) %>% 
+  # Here we hide two of the groups so that only one shows on loading
+  hideGroup("MHI") %>% # Hides the MHI layer so it doesn't all pop up at load
+  hideGroup("MHV") %>% # Hides the MHV layer so it all doesn't pop up at the load
+  addLayersControl(  #Gives you the option to turn on and off different basemaps or layers.
+    baseGroups = c("OSM (default)", "Toner Lite", "Carto B"),
+    overlayGroups = c("Total", "MHI", "MHV"),
+    options = layersControlOptions(collapsed = FALSE)) 
+
+
+NYCmap # loads the map you just made, this will take awhile
+
+# Saving the Html map
+# first argument is the leaflet map, second is the file name and extension, and final is whether it is selfcontained
+# The space needed for the self contained file is a lot which is why we reduced it down to just one layer.
+saveWidget(NYCmap, file="NYCmap.html", selfcontained = T)
